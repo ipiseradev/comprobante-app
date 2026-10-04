@@ -21,22 +21,30 @@ enum ValidationStatus {
 }
 
 model User {
-  id        String    @id @default(uuid()) @db.Uuid
-  email     String    @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
   name      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   receipts Receipt[]
 }
 
 model Receipt {
-  id        String        @id @default(uuid()) @db.Uuid
-  userId    String        @db.Uuid
-  imageUrl  String
-  status    ReceiptStatus @default(UPLOADED)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id                 String        @id @default(uuid()) @db.Uuid
+  userId             String        @db.Uuid
+  /// Path privado del objeto dentro del bucket "receipts" de Supabase Storage
+  /// (formato `<userId>/<uuid>.<ext>`). NO es una URL pública ni una signed URL.
+  imageUrl           String
+  status             ReceiptStatus @default(UPLOADED)
+  /// Se incrementa cada vez que un procesamiento comienza (UPLOADED|ERROR → PROCESSING).
+  processingAttempts Int           @default(0)
+  /// Último error de procesamiento (se completa al pasar PROCESSING → ERROR).
+  lastError          String?
+  /// Hash SHA-256 de la imagen, para detectar comprobantes duplicados.
+  imageHash          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   ocrData     OcrData?
@@ -47,9 +55,9 @@ model Receipt {
 }
 
 model OcrData {
-  id              String   @id @default(uuid()) @db.Uuid
-  receiptId       String   @unique @db.Uuid
-  amount          Decimal? @db.Decimal(12, 2)
+  id              String    @id @default(uuid()) @db.Uuid
+  receiptId       String    @unique @db.Uuid
+  amount          Decimal?  @db.Decimal(12, 2)
   date            DateTime?
   operationNumber String?
   senderName      String?
@@ -57,7 +65,15 @@ model OcrData {
   cbuCvu          String?
   bank            String?
   rawText         String?
-  confidence      Decimal? @db.Decimal(5, 4)
+  confidence      Decimal?  @db.Decimal(5, 4)
+  /// Proveedor que extrajo los datos (ej. "gemini").
+  provider        String?
+  /// Modelo exacto usado para la extracción.
+  model           String?
+  /// Respuesta cruda del proveedor, para auditoría y debugging.
+  rawResponse     Json?
+  /// Resultado de las validaciones deterministas por campo.
+  fieldChecks     Json?
 
   receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
 }

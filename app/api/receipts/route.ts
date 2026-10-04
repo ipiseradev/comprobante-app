@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // OBTENER PATH DEL ARCHIVO
+    // imageUrl guarda el path privado dentro del bucket, no una URL pública
 
     const imageUrl = filePath;
 

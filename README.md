@@ -46,15 +46,26 @@ Receipt  [PROCESSING] ──► OCR ──► Parser / Normalizer ──► OcrD
 | `PROCESSING` | Extracción de datos en curso |
 | `REVIEW` | Datos extraídos con baja confianza: requieren revisión del usuario |
 | `COMPLETED` | Datos extraídos y validados |
-| `ERROR` | Falló el procesamiento |
+| `ERROR` | Falló el procesamiento (el motivo queda en `lastError`) |
+
+Transiciones permitidas (definidas en [`lib/receipt-status.ts`](lib/receipt-status.ts)):
+
+| Desde | Hacia |
+|---|---|
+| `UPLOADED` | `PROCESSING` |
+| `PROCESSING` | `COMPLETED`, `REVIEW`, `ERROR` |
+| `ERROR` | `PROCESSING` (reintento) |
+| `COMPLETED`, `REVIEW` | — (finales; el reprocesamiento requerirá una acción explícita) |
+
+Cada vez que un procesamiento comienza se incrementa `processingAttempts`.
 
 ## Modelo de datos
 
 | Modelo | Descripción |
 |---|---|
 | `User` | Usuario dueño de los comprobantes |
-| `Receipt` | Comprobante subido: ruta de la imagen en Storage y estado del procesamiento |
-| `OcrData` | Datos extraídos: monto, fecha, número de operación, ordenante, destinatario, CBU/CVU, banco, texto crudo y confianza |
+| `Receipt` | Comprobante subido: path de la imagen en Storage, estado, intentos de procesamiento, último error y hash de la imagen |
+| `OcrData` | Datos extraídos: monto, fecha, número de operación, ordenante, destinatario, CBU/CVU, banco, texto crudo y confianza, más trazabilidad de la extracción (proveedor, modelo, respuesta cruda y checks por campo) |
 | `Correction` | Correcciones manuales del usuario sobre un campo extraído (valor original → corregido) |
 | `Validation` | Resultado de las validaciones: `CONSISTENT`, `REVIEW` o `INCONSISTENT`, con `riskScore` y detalle de los checks |
 
@@ -103,6 +114,8 @@ Crear en Supabase Storage un bucket con:
 
 Las imágenes se guardan como `<userId>/<uuid>.<ext>` y solo el servidor accede a ellas mediante la secret key.
 
+> **`Receipt.imageUrl` guarda el path privado del objeto dentro del bucket** (ej. `<userId>/<uuid>.jpg`), **no** una URL pública ni una signed URL. Para leer la imagen hay que descargarla desde el servidor con el cliente de Supabase.
+
 ## Variables de entorno
 
 | Variable | Descripción |
@@ -116,8 +129,15 @@ Las imágenes se guardan como `<userId>/<uuid>.<ext>` y solo el servidor accede 
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/api/receipts` | Sube un comprobante (`multipart/form-data`, campo `file`; JPG, PNG o WEBP hasta 10 MB) y crea el `Receipt` en estado `UPLOADED` |
-| `POST` | `/api/receipts/:id/process` | Inicia el procesamiento del comprobante (`UPLOADED` → `PROCESSING`) |
-| `GET` | `/api/test-db` | Endpoint de diagnóstico para desarrollo: crea un usuario de prueba y lista los últimos 5 |
+| `POST` | `/api/receipts/:id/process` | Inicia el procesamiento de forma atómica (`UPLOADED`/`ERROR` → `PROCESSING`) e incrementa `processingAttempts`. Responde `409` si el comprobante ya está en proceso o ya fue procesado, `404` si no existe y `400` si el ID es inválido |
+
+### Endpoints de desarrollo
+
+> ⚠️ No forman parte del MVP y **escriben en la base de datos**. Usar solo en desarrollo local.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/test-db` | Prototipo de validaciones: toma el `Receipt` más reciente, revisa qué campos de su `OcrData` están completos, calcula un `riskScore` y **crea un registro `Validation`**. Responde `404` si no hay receipts y `400` si el más reciente no tiene `OcrData` |
 
 ## Scripts
 
@@ -139,11 +159,12 @@ comprobante-app/
 │   │   ├── receipts/
 │   │   │   ├── route.ts               # Subida de comprobantes
 │   │   │   └── [id]/process/route.ts  # Inicio del procesamiento
-│   │   └── test-db/route.ts           # Diagnóstico de la base (dev)
+│   │   └── test-db/route.ts           # Prototipo de validaciones (solo dev, escribe en la DB)
 │   ├── layout.tsx
 │   └── page.tsx                       # UI de carga (drag & drop + preview)
 ├── lib/
 │   ├── prisma.ts                      # Cliente de Prisma (singleton + adapter pg)
+│   ├── receipt-status.ts              # Ciclo de vida y transiciones de estado
 │   └── supabase.ts                    # Cliente de Supabase (solo servidor)
 ├── prisma/
 │   ├── schema.prisma
