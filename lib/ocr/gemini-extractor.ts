@@ -31,6 +31,37 @@ export const GEMINI_DEFAULT_MODEL = "gemini-3.8-flash";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
+/** Intentos totales por imagen, incluyendo el primero. */
+const MAX_ATTEMPTS = 3;
+
+/** Espera antes del primer reintento; se duplica en cada reintento. */
+const RETRY_BASE_DELAY_MS = 2_000;
+
+/** Jitter aleatorio sumado a cada espera, para no reintentar en sincronía. */
+const RETRY_MAX_JITTER_MS = 500;
+
+/** Errores transitorios del proveedor: rate limit y fallas del servidor. */
+const RETRYABLE_HTTP_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function isRetryable(error: Error): boolean {
+  return (
+    error instanceof ExtractorHttpError &&
+    RETRYABLE_HTTP_STATUSES.has(error.status)
+  );
+}
+
+/** Espera antes del reintento N (1-based): 2s, 4s, ... más jitter. */
+function retryDelayMs(retry: number): number {
+  return (
+    RETRY_BASE_DELAY_MS * 2 ** (retry - 1) +
+    Math.floor(Math.random() * RETRY_MAX_JITTER_MS)
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class GeminiReceiptExtractor implements ReceiptExtractor {
   readonly provider = "gemini";
   readonly model: string;
@@ -75,7 +106,25 @@ export class GeminiReceiptExtractor implements ReceiptExtractor {
     };
   }
 
+  /**
+   * Llama a Gemini reintentando solo errores HTTP transitorios
+   * (429, 500, 502, 503, 504). Auth, timeout y cualquier otro error
+   * se propagan en el primer intento.
+   */
   private async generate(image: ReceiptImageInput) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.generateOnce(image);
+      } catch (error) {
+        if (!(error instanceof Error) || !isRetryable(error) || attempt >= MAX_ATTEMPTS) {
+          throw error;
+        }
+        await sleep(retryDelayMs(attempt));
+      }
+    }
+  }
+
+  private async generateOnce(image: ReceiptImageInput) {
     try {
       return await this.client.models.generateContent({
         model: this.model,
