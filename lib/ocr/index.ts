@@ -23,4 +23,15 @@ export {
   ResponseValidationError,
 } from "./errors";
 
-export { GEMINI_DEFAULT_MODEL, GeminiReceiptExtractor } from "./gemini-extractor";
+export {
+  GEMINI_DEFAULT_MODEL,
+  GeminiReceiptExtractor,
+  type GeminiReceiptExtractorOptions,
+} from "./gemini-extractor";
+
+export {
+  MockReceiptExtractor,
+  type MockReceiptExtractorOptions,
+} from "./mock-extractor";
+
+export { createReceiptExtractor } from "./factory";

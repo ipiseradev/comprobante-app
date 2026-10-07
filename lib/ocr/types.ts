@@ -6,10 +6,9 @@ export interface ReceiptImageInput {
   /** Bytes de la imagen codificados en base64. */
   data: string;
   mimeType: ReceiptImageMimeType;
-  id?: string;
 }
 
-/** Metadata de trazabilidad: quién generó la extracción   y con qué modelo. */
+/** Metadata de trazabilidad: quién generó la extracción y con qué modelo. */
 export interface ExtractorMetadata {
   provider: string;
   model: string;

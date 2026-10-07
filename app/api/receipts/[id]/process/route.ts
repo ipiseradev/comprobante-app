@@ -1,4 +1,12 @@
 import { NextResponse } from "next/server";
+
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  toErrorResponse,
+} from "@/lib/errors";
+import { requestLogger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { statusesAllowedToTransitionTo } from "@/lib/receipt-status";
 
@@ -12,20 +20,17 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(
-  request: Request,
+  _request: Request,
   context: RouteContext
 ) {
+  const logger = requestLogger("POST /api/receipts/[id]/process");
+  let currentStatus: string | undefined;
+
   try {
     const { id } = await context.params;
 
     if (!UUID_REGEX.test(id)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "ID de comprobante inválido",
-        },
-        { status: 400 }
-      );
+      throw new BadRequestError("ID de comprobante inválido");
     }
 
     // Cambio de estado atómico: solo pasa a PROCESSING si el estado
@@ -47,6 +52,11 @@ export async function POST(
     });
 
     if (updatedReceipt) {
+      logger.info("receipt_processing_started", {
+        receiptId: id,
+        attempt: updatedReceipt.processingAttempts,
+      });
+
       return NextResponse.json({
         success: true,
         message: "Procesamiento iniciado",
@@ -65,37 +75,22 @@ export async function POST(
     });
 
     if (!receipt) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Comprobante no encontrado",
-        },
-        { status: 404 }
-      );
+      throw new NotFoundError("Comprobante no encontrado");
     }
 
-    const error =
+    currentStatus = receipt.status;
+
+    throw new ConflictError(
       receipt.status === "PROCESSING"
         ? "El comprobante ya está siendo procesado"
-        : "El comprobante ya fue procesado y no puede volver a procesarse";
-
-    return NextResponse.json(
-      {
-        success: false,
-        error,
-        status: receipt.status,
-      },
-      { status: 409 }
+        : "El comprobante ya fue procesado y no puede volver a procesarse"
     );
   } catch (error) {
-    console.error("Error procesando comprobante:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error interno procesando el comprobante",
-      },
-      { status: 500 }
+    // El 409 incluye el estado actual para que el cliente sepa qué mostrar
+    return toErrorResponse(
+      error,
+      logger,
+      currentStatus ? { status: currentStatus } : {}
     );
   }
 }

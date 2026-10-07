@@ -62,20 +62,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export interface GeminiReceiptExtractorOptions {
+  apiKey?: string;
+  model?: string;
+}
+
 export class GeminiReceiptExtractor implements ReceiptExtractor {
   readonly provider = "gemini";
   readonly model: string;
   private readonly client: GoogleGenAI;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
+  /**
+   * Las opciones permiten inyectar la configuración validada (ver
+   * lib/ocr/factory.ts). Sin opciones se lee process.env, para que los
+   * scripts standalone sigan funcionando.
+   */
+  constructor(options: GeminiReceiptExtractorOptions = {}) {
+    const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new MissingApiKeyError(
         "GEMINI_API_KEY no está definida. Configurala en las variables de entorno antes de usar GeminiReceiptExtractor."
       );
     }
 
-    this.model = process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
+    this.model = options.model || process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
     this.client = new GoogleGenAI({ apiKey });
   }
 

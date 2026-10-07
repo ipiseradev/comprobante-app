@@ -1,53 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
+
+import { getEnv } from "@/lib/env";
+import {
+  BadRequestError,
+  ForbiddenError,
+  InternalError,
+  toErrorResponse,
+} from "@/lib/errors";
+import { requestLogger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
+
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
+  const logger = requestLogger("POST /api/receipts");
+
   try {
+    // En producción el upload real está deshabilitado (modo demo):
+    // evita procesar comprobantes reales sin facturación ni auth.
+    if (!getEnv().ALLOW_REAL_UPLOADS) {
+      throw new ForbiddenError(
+        "La carga de comprobantes reales no está habilitada en este entorno."
+      );
+    }
+
     const formData = await request.formData();
 
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "No se recibió ningún archivo",
-        },
-        { status: 400 }
-      );
+      throw new BadRequestError("No se recibió ningún archivo");
     }
 
     // VALIDAR TIPO
 
-    const allowedTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Formato de imagen no permitido",
-        },
-        { status: 400 }
-      );
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      throw new BadRequestError("Formato de imagen no permitido");
     }
 
     // VALIDAR TAMAÑO
 
-    const maxSize = 10 * 1024 * 1024;
-
-    if (file.size > maxSize) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "El archivo supera el límite de 10 MB",
-        },
-        { status: 400 }
-      );
+    if (file.size > MAX_SIZE_BYTES) {
+      throw new BadRequestError("El archivo supera el límite de 10 MB");
     }
 
     // BUSCAR USUARIO
@@ -55,13 +52,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findFirst();
 
     if (!user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "No existe ningún usuario",
-        },
-        { status: 400 }
-      );
+      throw new InternalError("No existe ningún usuario en la base");
     }
 
     // GENERAR NOMBRE ÚNICO
@@ -74,30 +65,24 @@ export async function POST(request: NextRequest) {
     const filePath = `${user.id}/${fileName}`;
 
     // CONVERTIR FILE → BUFFER
-    
+
     const fileBuffer = Buffer.from(
       await file.arrayBuffer()
     );
 
     // SUBIR A SUPABASE
-    
-    const { error: uploadError } = await supabase.storage
-      .from("receipts")
+
+    const { error: uploadError } = await getSupabase()
+      .storage.from("receipts")
       .upload(filePath, fileBuffer, {
         contentType: file.type,
         upsert: false,
       });
 
     if (uploadError) {
-      console.error("Error subiendo imagen:", uploadError);
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "No se pudo guardar la imagen",
-        },
-        { status: 500 }
-      );
+      throw new InternalError("Error subiendo imagen a Supabase Storage", {
+        cause: uploadError,
+      });
     }
 
     // OBTENER PATH DEL ARCHIVO
@@ -106,7 +91,6 @@ export async function POST(request: NextRequest) {
     const imageUrl = filePath;
 
     // CREAR RECEIPT
-    
 
     const receipt = await prisma.receipt.create({
       data: {
@@ -116,21 +100,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // RESPUESTA
-  
+    logger.info("receipt_uploaded", {
+      receiptId: receipt.id,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    });
+
     return NextResponse.json({
       success: true,
       receipt,
     });
   } catch (error) {
-    console.error("Error creando receipt:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error interno creando el comprobante",
-      },
-      { status: 500 }
-    );
+    return toErrorResponse(error, logger);
   }
 }

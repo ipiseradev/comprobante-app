@@ -14,6 +14,9 @@ Sistema para **verificar comprobantes de pago argentinos** (transferencias banca
 | Base de datos | PostgreSQL 16 (Docker) |
 | ORM | [Prisma 7](https://www.prisma.io) con driver adapter `@prisma/adapter-pg` |
 | Almacenamiento | Supabase Storage (bucket privado) |
+| Extracción (IA) | Google Gemini (`@google/genai`), intercambiable por configuración |
+| Validación | Zod (variables de entorno, respuestas del extractor) |
+| Tests | Vitest |
 
 ## Flujo de procesamiento
 
@@ -118,11 +121,20 @@ Las imágenes se guardan como `<userId>/<uuid>.<ext>` y solo el servidor accede 
 
 ## Variables de entorno
 
-| Variable | Descripción |
-|---|---|
-| `DATABASE_URL` | Cadena de conexión a PostgreSQL |
-| `SUPABASE_URL` | URL del proyecto de Supabase |
-| `SUPABASE_SECRET_KEY` | Secret key de Supabase. **Solo servidor**, nunca exponer al cliente |
+Se validan con Zod en [`lib/env.ts`](lib/env.ts): si falta una obligatoria, la app falla con un mensaje que indica cuál. La plantilla documentada está en [`.env.example`](.env.example).
+
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `DATABASE_URL` | Sí | Cadena de conexión a PostgreSQL |
+| `ALLOW_REAL_UPLOADS` | No | `true`/`false`. Sin definir: habilitado en desarrollo y **deshabilitado en producción** (modo demo) |
+| `SUPABASE_URL` | Si hay upload real | URL del proyecto de Supabase |
+| `SUPABASE_SECRET_KEY` | Si hay upload real | Secret key de Supabase. **Solo servidor**, nunca exponer al cliente |
+| `EXTRACTOR` | No | `mock` (default, sin llamadas externas) o `gemini` |
+| `GEMINI_API_KEY` | Si `EXTRACTOR=gemini` | API key de Google AI Studio |
+| `GEMINI_MODEL` | No | Default: `gemini-3.8-flash` |
+| `LOG_LEVEL` | No | `debug`, `info` (default), `warn` o `error` |
+
+> ⚠️ Con una API key de Gemini del **free tier**, Google puede usar el contenido enviado para mejorar sus productos. No la uses con comprobantes reales.
 
 ## API
 
@@ -131,13 +143,9 @@ Las imágenes se guardan como `<userId>/<uuid>.<ext>` y solo el servidor accede 
 | `POST` | `/api/receipts` | Sube un comprobante (`multipart/form-data`, campo `file`; JPG, PNG o WEBP hasta 10 MB) y crea el `Receipt` en estado `UPLOADED` |
 | `POST` | `/api/receipts/:id/process` | Inicia el procesamiento de forma atómica (`UPLOADED`/`ERROR` → `PROCESSING`) e incrementa `processingAttempts`. Responde `409` si el comprobante ya está en proceso o ya fue procesado, `404` si no existe y `400` si el ID es inválido |
 
-### Endpoints de desarrollo
+`POST /api/receipts` responde `403` cuando `ALLOW_REAL_UPLOADS` es `false`.
 
-> ⚠️ No forman parte del MVP y **escriben en la base de datos**. Usar solo en desarrollo local.
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| `GET` | `/api/test-db` | Prototipo de validaciones: toma el `Receipt` más reciente, revisa qué campos de su `OcrData` están completos, calcula un `riskScore` y **crea un registro `Validation`**. Responde `404` si no hay receipts y `400` si el más reciente no tiene `OcrData` |
+Todas las respuestas de error tienen la forma `{ "success": false, "error": "<mensaje para el usuario>", "code": "<CÓDIGO>" }`. Los detalles internos nunca llegan al cliente: quedan en los logs, que se escriben en JSON (una línea por evento, con un `requestId` por request).
 
 ## Scripts
 
@@ -147,6 +155,9 @@ Las imágenes se guardan como `<userId>/<uuid>.<ext>` y solo el servidor accede 
 | `npm run build` | Build de producción |
 | `npm run start` | Servidor de producción |
 | `npm run lint` | ESLint |
+| `npm test` | Tests (Vitest) |
+| `npm run test:watch` | Tests en modo watch |
+| `npm run test:gemini` | Benchmark de Gemini contra `ocr-benchmark/` (hace llamadas reales a la API) |
 | `npx prisma migrate dev` | Aplica migraciones en desarrollo |
 | `npx prisma studio` | Explorador visual de la base de datos |
 
@@ -159,13 +170,18 @@ comprobante-app/
 │   │   ├── receipts/
 │   │   │   ├── route.ts               # Subida de comprobantes
 │   │   │   └── [id]/process/route.ts  # Inicio del procesamiento
-│   │   └── test-db/route.ts           # Prototipo de validaciones (solo dev, escribe en la DB)
 │   ├── layout.tsx
 │   └── page.tsx                       # UI de carga (drag & drop + preview)
 ├── lib/
+│   ├── env.ts                         # Variables de entorno validadas con Zod
+│   ├── errors.ts                      # Errores tipados y respuestas HTTP seguras
+│   ├── logger.ts                      # Logs estructurados (JSON)
+│   ├── ocr/                           # Extracción: contrato, Gemini, mock y factory
 │   ├── prisma.ts                      # Cliente de Prisma (singleton + adapter pg)
 │   ├── receipt-status.ts              # Ciclo de vida y transiciones de estado
 │   └── supabase.ts                    # Cliente de Supabase (solo servidor)
+├── scripts/
+│   └── test-gemini.ts                 # Benchmark de extracción
 ├── prisma/
 │   ├── schema.prisma
 │   └── migrations/

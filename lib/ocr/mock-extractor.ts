@@ -3,7 +3,6 @@ import { ReceiptExtractorError } from "./errors";
 import type {
   ReceiptExtractor,
   ReceiptExtractionResult,
-  ReceiptImageInput,
 } from "./types";
 
 /**
@@ -33,7 +32,7 @@ const DEFAULT_MOCK_ID = "001";
 const DEFAULT_LATENCY_MS = 300;
 
 export interface MockReceiptExtractorOptions {
-  /** Fixture a usar cuando la imagen no trae un `id` propio. */
+  /** Fixture que devuelve el extractor, sea cual sea la imagen. */
   mockId?: string;
   /** Latencia simulada. Usar 0 en tests unitarios para que sean rápidos. */
   latencyMs?: number;
@@ -61,18 +60,17 @@ export class MockReceiptExtractor implements ReceiptExtractor {
     this.latencyMs = latencyMs;
   }
 
-  async extract(image: ReceiptImageInput): Promise<ReceiptExtractionResult> {
+  // La imagen se ignora: el fixture se elige al construir el extractor,
+  // así el contrato de producción (ReceiptImageInput) no tiene campos de test.
+  async extract(): Promise<ReceiptExtractionResult> {
     // La latencia hace visibles los estados de carga y posibles race conditions
     // en la UI, que con una respuesta instantánea pasarían desapercibidos.
     if (this.latencyMs > 0) await sleep(this.latencyMs);
 
-    // El id de la imagen tiene prioridad y permite elegir el fixture por test.
-    // Se resuelve una sola vez para que la búsqueda y el error usen el mismo valor.
-    const receiptId = image.id ?? this.mockId;
-    const fixture = MOCK_RECEIPTS[receiptId];
+    const fixture = MOCK_RECEIPTS[this.mockId];
 
     if (!fixture) {
-      throw new ReceiptExtractorError(`No existe un comprobante mock con id "${receiptId}"`);
+      throw new ReceiptExtractorError(`No existe un comprobante mock con id "${this.mockId}"`);
     }
 
     return {
