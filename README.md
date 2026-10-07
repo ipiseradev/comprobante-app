@@ -74,6 +74,35 @@ Cada vez que un procesamiento comienza se incrementa `processingAttempts`.
 
 El schema completo está en [`prisma/schema.prisma`](prisma/schema.prisma).
 
+## Motor de validación
+
+Cada regla es una función pura e independiente en [`lib/validation/rules/`](lib/validation/rules), con su peso y una explicación en lenguaje simple para el usuario.
+
+| Regla | Peso | Qué verifica |
+|---|---|---|
+| CBU/CVU matemáticamente válido | 60 | 22 dígitos y los dos dígitos verificadores, de origen y de destino |
+| CBU/CVU coherente con el banco | 50 | El prefijo de cada CBU/CVU coincide con el banco **de su titular** (un CVU no puede ser de un banco tradicional; un CVU de Mercado Pago empieza con `0000003`) |
+| Comprobante no repetido | 70 | El mismo número de operación no fue verificado antes **por el mismo usuario** |
+| Monto válido | 50 | Positivo y con como máximo dos decimales |
+| Fecha válida y reciente | 30 | Existe en el calendario, no es futura; advertencia después de 7 días y falla después de 90 (posible comprobante reutilizado) |
+| Datos esenciales | 20 | Monto, fecha, número de operación y destinatario |
+| Formato del monto ⚠️ | 30 | Formato argentino (`45.990,50`) en el texto del comprobante |
+| Formato del número de operación ⚠️ | 10 | Formato habitual del emisor |
+
+⚠️ = regla de baja confianza: nunca pasa de advertencia.
+
+**Score de riesgo (0–100):** cada regla que falla suma su peso; cada advertencia, la mitad. Las reglas que no se pueden verificar por falta de datos no suman.
+
+| Veredicto | Condición |
+|---|---|
+| Sin inconsistencias detectadas | Score menor a 20 y ninguna regla fallida |
+| Sospechoso | Score de 20 a 49, o cualquier regla fallida |
+| Probablemente falso | Score de 50 o más |
+
+Todos los veredictos, incluido el mejor, muestran **"Confirmá el ingreso en tu cuenta antes de entregar"**: ninguna regla sobre la imagen prueba que el dinero llegó, y una falsificación hecha editando un comprobante real puede pasar todas las reglas.
+
+Los códigos de entidad del BCRA en [`lib/validation/entities.ts`](lib/validation/entities.ts) incluyen solo los confirmados en más de una fuente: un código desconocido deja la regla como "no verificable", mientras que uno equivocado generaría falsos positivos.
+
 ## Requisitos
 
 - Node.js 20+
@@ -179,7 +208,8 @@ comprobante-app/
 │   ├── ocr/                           # Extracción: contrato, Gemini, mock y factory
 │   ├── prisma.ts                      # Cliente de Prisma (singleton + adapter pg)
 │   ├── receipt-status.ts              # Ciclo de vida y transiciones de estado
-│   └── supabase.ts                    # Cliente de Supabase (solo servidor)
+│   ├── supabase.ts                    # Cliente de Supabase (solo servidor)
+│   └── validation/                    # Motor de reglas, score y veredicto
 ├── scripts/
 │   └── test-gemini.ts                 # Benchmark de extracción
 ├── prisma/
