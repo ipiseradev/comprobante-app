@@ -60,10 +60,18 @@ model OcrData {
   amount          Decimal?  @db.Decimal(12, 2)
   date            DateTime?
   operationNumber String?
+  /// Banco o billetera que emitió el comprobante (logo o encabezado).
+  issuer          String?
   senderName      String?
+  /// CBU/CVU de quien envía (solo dígitos).
+  senderCbuCvu    String?
+  /// Banco o billetera de quien envía, si aparece explícitamente.
+  senderBank      String?
   receiverName    String?
-  cbuCvu          String?
-  bank            String?
+  /// CBU/CVU de quien recibe (solo dígitos).
+  receiverCbuCvu  String?
+  /// Banco o billetera de quien recibe, si aparece explícitamente.
+  receiverBank    String?
   rawText         String?
   confidence      Decimal?  @db.Decimal(5, 4)
   /// Proveedor que extrajo los datos (ej. "gemini").

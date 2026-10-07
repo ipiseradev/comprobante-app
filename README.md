@@ -68,7 +68,7 @@ Cada vez que un procesamiento comienza se incrementa `processingAttempts`.
 |---|---|
 | `User` | Usuario dueño de los comprobantes |
 | `Receipt` | Comprobante subido: path de la imagen en Storage, estado, intentos de procesamiento, último error y hash de la imagen |
-| `OcrData` | Datos extraídos: monto, fecha, número de operación, ordenante, destinatario, CBU/CVU, banco, texto crudo y confianza, más trazabilidad de la extracción (proveedor, modelo, respuesta cruda y checks por campo) |
+| `OcrData` | Datos extraídos: monto, fecha, número de operación, emisor del comprobante, nombre + CBU/CVU + banco **de origen y de destino por separado**, texto crudo y confianza, más trazabilidad de la extracción (proveedor, modelo, respuesta cruda y checks por campo) |
 | `Correction` | Correcciones manuales del usuario sobre un campo extraído (valor original → corregido) |
 | `Validation` | Resultado de las validaciones: `CONSISTENT`, `REVIEW` o `INCONSISTENT`, con `riskScore` y detalle de los checks |
 

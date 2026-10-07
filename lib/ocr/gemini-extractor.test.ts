@@ -29,10 +29,14 @@ const VALID_DATA = {
   amount: 1500,
   date: "2025-03-14",
   operationNumber: "908172635411",
-  senderName: "Laura Martina Gómez",
-  receiverName: "Tomás Ezequiel Ferreyra",
-  cbuCvu: "0070999030004123456789",
-  bank: "Banco Galicia",
+  issuer: "Banco Galicia",
+  sender: { name: "Laura Martina Gómez", cbuCvu: null, bank: null },
+  receiver: {
+    name: "Tomás Ezequiel Ferreyra",
+    cbuCvu: "0070999030004123456789",
+    bank: "Banco Galicia",
+  },
+  rawText: "Banco Galicia\nComprobante",
 };
 
 const IMAGE = { data: "aGVsbG8=", mimeType: "image/jpeg" as const };

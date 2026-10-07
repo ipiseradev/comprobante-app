@@ -21,10 +21,17 @@ Cada imagen `NNN.jpg` tiene su ground truth en `expected/NNN.json`.
   "amount": 45990.5,
   "date": "2026-07-09",
   "operationNumber": "167191758841",
-  "senderName": "Nombre Apellido",
-  "receiverName": "Nombre Apellido",
-  "cbuCvu": "0000000000000000000000",
-  "bank": "Mercado Pago",
+  "issuer": "Billetera Andina",
+  "sender": {
+    "name": "Nombre Apellido",
+    "cbuCvu": "0000000000000000000000",
+    "bank": "Billetera Andina"
+  },
+  "receiver": {
+    "name": "Nombre Apellido",
+    "cbuCvu": "0000000000000000000000",
+    "bank": null
+  },
   "sourceType": "screenshot",
   "quality": "good"
 }
@@ -32,15 +39,26 @@ Cada imagen `NNN.jpg` tiene su ground truth en `expected/NNN.json`.
 
 | Campo | Tipo | Regla |
 |---|---|---|
-| `amount` | `number \| null` | Sin `$` ni separadores argentinos: `"$ 45.990,50"` → `45990.5` |
-| `date` | `"YYYY-MM-DD" \| null` | Fecha de la operación |
-| `operationNumber` | `string \| null` | Exactamente como aparece (sin espacios visuales) |
-| `senderName` | `string \| null` | Persona/cuenta que envía el dinero |
-| `receiverName` | `string \| null` | Persona/cuenta que recibe el dinero |
-| `cbuCvu` | `string \| null` | Solo dígitos (22). CBU/CVU del destinatario. No confundir con número de cuenta, tarjeta o alias |
-| `bank` | `string \| null` | Banco o billetera identificable en el comprobante |
-| `sourceType` | `"screenshot" \| "photo" \| "downloaded"` | Origen de la imagen |
-| `quality` | `"good" \| "medium" \| "poor"` | Legibilidad de la imagen |
+| `amount` | número o `null` | Sin `$` ni separadores argentinos: `"$ 45.990,50"` → `45990.5` |
+| `date` | `"YYYY-MM-DD"` o `null` | Fecha de la operación |
+| `operationNumber` | texto o `null` | Exactamente como aparece (sin espacios visuales) |
+| `issuer` | texto o `null` | Banco o billetera que **emitió** el comprobante (logo o encabezado) |
+| `sender.name` / `receiver.name` | texto o `null` | Titular que envía / recibe, tal como aparece |
+| `sender.cbuCvu` / `receiver.cbuCvu` | texto o `null` | Solo dígitos (22). No confundir con número de cuenta, tarjeta o alias |
+| `sender.bank` / `receiver.bank` | texto o `null` | Banco de ese titular, **solo si aparece explícitamente junto a sus datos**. No se copia el `issuer` |
+| `sourceType` | `screenshot`, `photo` o `downloaded` | Origen de la imagen |
+| `quality` | `good`, `medium` o `poor` | Legibilidad de la imagen |
+
+El extractor también devuelve `rawText` (transcripción del texto visible), que no se compara porque no tiene una única versión correcta.
+
+## Cómo correr el benchmark
+
+```bash
+npm run test:gemini        # las 4 imágenes
+npm run test:gemini 002    # una sola
+```
+
+> ⚠️ Hace llamadas reales a Gemini. Con una API key del **free tier**, Google puede usar las imágenes enviadas para mejorar sus productos: no lo corras con comprobantes reales sin facturación activa.
 
 ## Cómo armar el ground truth
 

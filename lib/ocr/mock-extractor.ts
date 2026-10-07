@@ -19,10 +19,18 @@ const MOCK_RECEIPTS: Readonly<Record<string, ExtractedReceiptData>> = Object.fre
     amount: 25000,
     date: "2025-04-23",
     operationNumber: "12345678",
-    senderName: "Ignacio Pisera",
-    receiverName: "María Gómez",
-    cbuCvu: "0070999030004123456789",
-    bank: "Banco Galicia",
+    issuer: "Banco Galicia",
+    sender: {
+      name: "Ignacio Pisera",
+      cbuCvu: null,
+      bank: null,
+    },
+    receiver: {
+      name: "María Gómez",
+      cbuCvu: "0070999030004123456789",
+      bank: "Banco Galicia",
+    },
+    rawText: "Banco Galicia\nComprobante de transferencia\n23/04/2025\n$ 25.000\nPara: María Gómez",
   },
 });
 

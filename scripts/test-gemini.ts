@@ -1,4 +1,11 @@
-
+/**
+ * Benchmark de GeminiReceiptExtractor contra el ground truth manual.
+ *
+ * No toca PostgreSQL ni Supabase. Compara campo por campo el resultado del
+ * extractor con ocr-benchmark/expected/<id>.json (solo lectura).
+ *
+ * Uso: npm run test:gemini [id]   (sin id: corre las 4 imágenes)
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -17,19 +24,30 @@ const requestedImage = process.argv[2];
 const IMAGE_IDS = requestedImage
 ? [requestedImage]
 : ["001", "002", "003" , "004"];
-const FIELDS = [
-  "amount",
-  "date",
-  "operationNumber",
-  "senderName",
-  "receiverName",
-  "cbuCvu",
-  "bank",
-] as const satisfies readonly (keyof ExtractedReceiptData)[];
+/** rawText no se compara: no tiene una única transcripción "correcta". */
+type ComparableReceipt = Omit<ExtractedReceiptData, "rawText">;
 
-type Field = (typeof FIELDS)[number];
+type FieldValue = string | number | null;
 
-type ExpectedReceipt = ExtractedReceiptData & {
+/** Campos comparados, con un lector tipado para cada uno (incluye anidados). */
+const FIELD_GETTERS = {
+  amount: (d) => d.amount,
+  date: (d) => d.date,
+  operationNumber: (d) => d.operationNumber,
+  issuer: (d) => d.issuer,
+  "sender.name": (d) => d.sender.name,
+  "sender.cbuCvu": (d) => d.sender.cbuCvu,
+  "sender.bank": (d) => d.sender.bank,
+  "receiver.name": (d) => d.receiver.name,
+  "receiver.cbuCvu": (d) => d.receiver.cbuCvu,
+  "receiver.bank": (d) => d.receiver.bank,
+} satisfies Record<string, (data: ComparableReceipt) => FieldValue>;
+
+type Field = keyof typeof FIELD_GETTERS;
+
+const FIELDS = Object.keys(FIELD_GETTERS) as Field[];
+
+type ExpectedReceipt = ComparableReceipt & {
   sourceType: string;
   quality: string;
 };
@@ -80,8 +98,8 @@ function normalize(value: unknown): string {
 
 function compare(expected: ExpectedReceipt, obtained: ExtractedReceiptData | null): FieldResult[] {
   return FIELDS.map((field) => {
-    const expectedValue = expected[field];
-    const obtainedValue = obtained ? obtained[field] : undefined;
+    const expectedValue = FIELD_GETTERS[field](expected);
+    const obtainedValue = obtained ? FIELD_GETTERS[field](obtained) : undefined;
     const match = obtained !== null && valuesMatch(expectedValue, obtainedValue);
     const nearMatch =
       !match &&
@@ -190,7 +208,7 @@ function printSummary(results: ImageResult[]) {
 
   const leaked = results.filter((r) =>
     FIELDS.some((field) => {
-      const value = r.expected[field];
+      const value = FIELD_GETTERS[field](r.expected);
       return typeof value === "string" && RECEIPT_EXTRACTION_PROMPT.includes(value);
     })
   );
